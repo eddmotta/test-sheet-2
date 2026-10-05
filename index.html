@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sorteio de Pontos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+  /* Layout: um único painel centralizado; o número sorteado é o herói. */
+  :root {
+    --bg: #eef2ec;
+    --panel: #ffffff;
+    --fg: #17221b;
+    --muted: #5d6b61;
+    --line: #d5ddd6;
+    --accent: #1f7a4d;
+    --accent-fg: #ffffff;
+    --ok: #1f7a4d;
+    --err: #b3261e;
+    --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101612; --panel: #18211b; --fg: #e6eee8; --muted: #9aa99f;
+      --line: #2c3a31; --accent: #4cc489; --accent-fg: #0b1a11;
+      --ok: #4cc489; --err: #ff8a80; color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh; display: grid; place-items: center;
+    padding-inline: 16px; padding-block: 32px;
+    background: var(--bg); color: var(--fg); font: 16px/1.5 var(--body);
+  }
+  main {
+    width: 100%; max-width: 420px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 28px 24px; display: grid; gap: 20px;
+  }
+  .eyebrow { font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0; }
+  h1 { font: 800 28px/1.1 var(--display); margin: 4px 0 0; text-wrap: balance; }
+  .score {
+    display: grid; place-items: center; gap: 4px;
+    border: 1px dashed var(--line); border-radius: 10px; padding-block: 24px;
+  }
+  .score output {
+    font: 800 clamp(72px, 24vw, 112px)/1 var(--display);
+    font-variant-numeric: tabular-nums; color: var(--accent);
+  }
+  .score output.empty { color: var(--line); }
+  .score small { font: 500 13px var(--mono); color: var(--muted); }
+  .bump { animation: bump .35s ease-out; }
+  @keyframes bump { from { transform: scale(.8); opacity: .3; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .bump { animation: none; } }
+
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  button {
+    font: 600 16px var(--body); padding: 12px 16px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--accent); background: transparent; color: var(--accent);
+  }
+  button.primary { background: var(--accent); color: var(--accent-fg); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  #nameForm { display: grid; gap: 10px; }
+  #nameForm label { font-weight: 600; }
+  #nameForm input {
+    font: 16px var(--body); padding: 11px 12px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+  }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  #status { margin: 0; min-height: 1.5em; font-size: 14px; }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--err); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">Pontuação de 1 a 100</p>
+    <h1>Sorteie e registre seus pontos</h1>
+  </header>
+
+  <div class="score" aria-live="polite">
+    <output id="numero" class="empty">--</output>
+    <small id="dica">Clique em “Gerar número”</small>
+  </div>
+
+  <div class="actions" id="actions">
+    <button type="button" id="btnGerar">Gerar número</button>
+    <button type="button" id="btnEnviar" class="primary" disabled>Enviar</button>
+  </div>
+
+  <form id="nameForm" hidden>
+    <label for="nome">Qual é o seu nome?</label>
+    <input id="nome" name="nome" maxlength="100" autocomplete="name" required>
+    <div class="row">
+      <button type="button" id="btnCancelar">Cancelar</button>
+      <button type="submit" id="btnConfirmar" class="primary">Enviar pontuação</button>
+    </div>
+  </form>
+
+  <p id="status" role="status"></p>
+</main>
+
+<script>
+  // Cole aqui a URL do App da Web do Google Apps Script (termina em /exec)
+  const SCRIPT_URL = 'COLE_AQUI_A_URL_DO_APPS_SCRIPT';
+
+  const el = id => document.getElementById(id);
+  const numeroEl = el('numero'), dica = el('dica'), status = el('status');
+  const form = el('nameForm'), actions = el('actions'), nomeInput = el('nome');
+  let numero = null;
+
+  function setStatus(msg, tipo = '') { status.textContent = msg; status.className = tipo; }
+
+  el('btnGerar').addEventListener('click', () => {
+    numero = Math.floor(Math.random() * 100) + 1;
+    numeroEl.textContent = numero;
+    numeroEl.classList.remove('empty', 'bump'); void numeroEl.offsetWidth; numeroEl.classList.add('bump');
+    dica.textContent = 'Sua pontuação';
+    el('btnEnviar').disabled = false;
+    setStatus('');
+  });
+
+  // "Enviar" pergunta o nome antes de mandar
+  el('btnEnviar').addEventListener('click', () => {
+    if (numero === null) return;
+    actions.hidden = true; form.hidden = false; nomeInput.focus();
+  });
+
+  el('btnCancelar').addEventListener('click', () => {
+    form.hidden = true; actions.hidden = false;
+  });
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const nome = nomeInput.value.trim();
+    if (!nome) { setStatus('Digite seu nome para enviar.', 'err'); return; }
+    if (SCRIPT_URL.startsWith('COLE_')) {
+      setStatus('Falta configurar a URL do Apps Script no código da página.', 'err'); return;
+    }
+    const btn = el('btnConfirmar');
+    btn.disabled = true; setStatus('Enviando…');
+    try {
+      // text/plain evita a verificação CORS prévia, que o Apps Script não suporta
+      const resp = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ nome, pontuacao: numero })
+      });
+      const res = await resp.json();
+      if (!res.ok) throw new Error(res.erro || 'Erro desconhecido');
+      setStatus(`Enviado: ${nome} — ${numero} pontos.`, 'ok');
+      form.hidden = true; actions.hidden = false;
+      el('btnEnviar').disabled = true;
+      numero = null; numeroEl.textContent = '--'; numeroEl.classList.add('empty');
+      dica.textContent = 'Gere um novo número para jogar de novo';
+    } catch (err) {
+      setStatus('Não foi possível enviar: ' + err.message + '. Verifique a conexão e a URL do script.', 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
